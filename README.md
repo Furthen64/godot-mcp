@@ -82,86 +82,54 @@ Godot MCP enables AI agents to launch the Godot editor, run projects, capture de
 
 - [Godot Engine](https://godotengine.org/download) installed on your system
 - Node.js (>=18.0.0) and npm
-- An AI agent that supports MCP
+- [OpenCode](https://opencode.ai/) with MCP support
+- A local LLM setup compatible with OpenCode (recommended workflow)
 
 ## Quick Start
 
-### Claude Code
+### 1) Setup this repository
 
 ```bash
-claude mcp add godot -- npx @coding-solo/godot-mcp
+git clone https://github.com/Coding-Solo/godot-mcp.git
+cd godot-mcp
+./setup.sh
 ```
 
-That's it. Restart Claude Code and your Godot MCP tools are available.
+On Windows PowerShell:
 
-With environment variables:
+```powershell
+git clone https://github.com/Coding-Solo/godot-mcp.git
+cd godot-mcp
+.\setup.ps1
+```
+
+`setup.sh` / `setup.ps1` will:
+
+- Check required tools (`node`, `npm`)
+- Guide you through environment setup
+- Ask where your Godot documentation/project folder is
+- Save your local answers in `.godot-mcp.env`
+
+### 2) Register this MCP server in OpenCode
 
 ```bash
-claude mcp add godot -e GODOT_PATH=/path/to/godot -e DEBUG=true -- npx @coding-solo/godot-mcp
+./update_opencode.sh
 ```
 
-<details>
-<summary><strong>Cline</strong></summary>
+On Windows PowerShell:
 
-Add to your Cline MCP settings file (`~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json`):
+```powershell
+.\update_opencode.ps1
+```
+
+This updates your `opencode.json` (default: `~/.config/opencode/opencode.json`) and registers:
 
 ```json
 {
   "mcpServers": {
     "godot": {
-      "command": "npx",
-      "args": ["@coding-solo/godot-mcp"],
-      "env": {
-        "DEBUG": "true"
-      },
-      "disabled": false,
-      "autoApprove": [
-        "launch_editor",
-        "run_project",
-        "get_debug_output",
-        "stop_project",
-        "get_godot_version",
-        "list_projects",
-        "get_project_info",
-        "create_scene",
-        "add_node",
-        "load_sprite",
-        "export_mesh_library",
-        "save_scene",
-        "get_uid",
-        "update_project_uids"
-      ]
-    }
-  }
-}
-```
-
-</details>
-
-<details>
-<summary><strong>Cursor</strong></summary>
-
-**Using the Cursor UI:**
-
-1. Go to **Cursor Settings** > **Features** > **MCP**
-2. Click on the **+ Add New MCP Server** button
-3. Fill out the form:
-   - Name: `godot`
-   - Type: `command`
-   - Command: `npx @coding-solo/godot-mcp`
-4. Click "Add"
-5. You may need to press the refresh button in the top right corner of the MCP server card to populate the tool list
-
-**Using Project-Specific Configuration:**
-
-Create a file at `.cursor/mcp.json` in your project directory:
-
-```json
-{
-  "mcpServers": {
-    "godot": {
-      "command": "npx",
-      "args": ["@coding-solo/godot-mcp"],
+      "command": "node",
+      "args": ["/absolute/path/to/godot-mcp/build/index.js"],
       "env": {
         "DEBUG": "true"
       }
@@ -170,29 +138,21 @@ Create a file at `.cursor/mcp.json` in your project directory:
 }
 ```
 
-</details>
+If needed, set `GODOT_PATH` during setup to force a specific Godot binary.
 
-<details>
-<summary><strong>Other MCP Clients</strong></summary>
+### 3) Launch manually (optional)
 
-For any MCP-compatible client, use this configuration:
-
-```json
-{
-  "mcpServers": {
-    "godot": {
-      "command": "npx",
-      "args": ["@coding-solo/godot-mcp"],
-      "env": {
-        "GODOT_PATH": "/path/to/godot",
-        "DEBUG": "true"
-      }
-    }
-  }
-}
+```bash
+./launch.sh
 ```
 
-</details>
+On Windows PowerShell:
+
+```powershell
+.\launch.ps1
+```
+
+Use this when you want to run and test the MCP server directly outside OpenCode.
 
 ### Environment Variables
 
@@ -228,18 +188,9 @@ The bundled script accepts operation type and parameters as JSON, allowing for f
 ## Troubleshooting
 
 - **Godot Not Found**: Set the `GODOT_PATH` environment variable to your Godot executable path
-- **Connection Issues**: Ensure the server is running and restart your AI assistant
+- **Connection Issues**: Ensure OpenCode is running and reload MCP servers after updating config
 - **Invalid Project Path**: Ensure the path points to a directory containing a `project.godot` file
 - **Build Issues**: Make sure all dependencies are installed by running `npm install`
-
-<details>
-<summary><strong>Cursor-Specific Issues</strong></summary>
-
-- Ensure the MCP server shows up and is enabled in Cursor settings (Settings > MCP)
-- MCP tools can only be run using the Agent chat profile (Cursor Pro or Business subscription)
-- Use "Yolo Mode" to automatically run MCP tool requests
-
-</details>
 
 ## License
 

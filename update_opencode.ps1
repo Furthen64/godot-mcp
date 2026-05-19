@@ -1,0 +1,77 @@
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$EnvFile = Join-Path $ScriptDir ".godot-mcp.env"
+$DefaultOpenCodeConfig = Join-Path $HOME ".config/opencode/opencode.json"
+$ServerName = "godot"
+$BuildEntry = Join-Path $ScriptDir "build/index.js"
+
+if (Test-Path -LiteralPath $EnvFile) {
+  Get-Content -LiteralPath $EnvFile | ForEach-Object {
+    if ($_ -match '^\s*([A-Z0-9_]+)\s*=\s*"(.*)"\s*$') {
+      Set-Variable -Name $matches[1] -Value $matches[2] -Scope Script
+    }
+  }
+}
+
+$OpenCodeConfig = if ($args.Count -gt 0 -and -not [string]::IsNullOrWhiteSpace($args[0])) {
+  $args[0]
+} elseif (Get-Variable -Name OPENCODE_CONFIG -Scope Script -ErrorAction SilentlyContinue) {
+  $script:OPENCODE_CONFIG
+} else {
+  $DefaultOpenCodeConfig
+}
+
+if (-not (Get-Command node -ErrorAction SilentlyContinue)) { throw "node is required" }
+if (-not (Get-Command npm -ErrorAction SilentlyContinue)) { throw "npm is required" }
+
+$NodeModules = Join-Path $ScriptDir "node_modules"
+if (-not (Test-Path -LiteralPath $NodeModules -PathType Container)) {
+  Write-Host "Installing npm dependencies..."
+  Push-Location $ScriptDir
+  try { npm install } finally { Pop-Location }
+}
+
+if (-not (Test-Path -LiteralPath $BuildEntry -PathType Leaf)) {
+  Write-Host "Building server..."
+  Push-Location $ScriptDir
+  try { npm run build } finally { Pop-Location }
+}
+
+$OpenCodeDir = Split-Path -Parent $OpenCodeConfig
+if (-not [string]::IsNullOrWhiteSpace($OpenCodeDir)) {
+  New-Item -ItemType Directory -Path $OpenCodeDir -Force | Out-Null
+}
+
+$config = @{}
+if (Test-Path -LiteralPath $OpenCodeConfig -PathType Leaf) {
+  $raw = (Get-Content -LiteralPath $OpenCodeConfig -Raw).Trim()
+  if ($raw) {
+    $parsed = $raw | ConvertFrom-Json -Depth 100 -AsHashtable
+    if ($parsed -is [hashtable]) { $config = $parsed }
+  }
+}
+
+if (-not $config.ContainsKey("mcpServers") -or -not ($config["mcpServers"] -is [hashtable])) {
+  $config["mcpServers"] = @{}
+}
+
+$envMap = @{ DEBUG = "true" }
+if (Get-Variable -Name GODOT_PATH -Scope Script -ErrorAction SilentlyContinue) {
+  if (-not [string]::IsNullOrWhiteSpace($script:GODOT_PATH)) {
+    $envMap["GODOT_PATH"] = $script:GODOT_PATH
+  }
+}
+
+$config["mcpServers"][$ServerName] = @{
+  command = "node"
+  args = @((Resolve-Path -LiteralPath $BuildEntry).Path)
+  env = $envMap
+}
+
+$json = $config | ConvertTo-Json -Depth 100
+Set-Content -LiteralPath $OpenCodeConfig -Value $json
+
+Write-Host "Updated OpenCode MCP config: $OpenCodeConfig"
+Write-Host "Server '$ServerName' now points to: $BuildEntry"
