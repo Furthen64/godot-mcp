@@ -51,6 +51,7 @@ Windows PowerShell:
 ```
 
 This updates your OpenCode MCP server config to point at this repository's built server.
+The scripts write to `mcp.servers.<name>` in `opencode.json` (not the deprecated top-level `mcpServers` key).
 
 ### 4) Launch manually (optional)
 

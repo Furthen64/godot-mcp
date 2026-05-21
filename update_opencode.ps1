@@ -102,8 +102,12 @@ if (Test-Path -LiteralPath $OpenCodeConfig -PathType Leaf) {
   }
 }
 
-if (-not $config.ContainsKey("mcpServers") -or -not ($config["mcpServers"] -is [hashtable])) {
-  $config["mcpServers"] = @{}
+if (-not $config.ContainsKey("mcp") -or -not ($config["mcp"] -is [hashtable])) {
+  $config["mcp"] = @{}
+}
+
+if (-not $config["mcp"].ContainsKey("servers") -or -not ($config["mcp"]["servers"] -is [hashtable])) {
+  $config["mcp"]["servers"] = @{}
 }
 
 $envMap = @{ DEBUG = "true" }
@@ -113,7 +117,7 @@ if (Get-Variable -Name GODOT_PATH -Scope Script -ErrorAction SilentlyContinue) {
   }
 }
 
-$config["mcpServers"][$ServerName] = @{
+$config["mcp"]["servers"][$ServerName] = @{
   command = "node"
   args = @((Resolve-Path -LiteralPath $BuildEntry).Path)
   env = $envMap
