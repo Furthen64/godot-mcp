@@ -59,42 +59,54 @@ if (-not (Get-Command godot -ErrorAction SilentlyContinue)) {
 Write-Header "Godot Offline Documentation"
 Write-Step "Download godot-docs-html-stable.zip from: https://docs.godotengine.org/en/stable/"
 Write-Step "Unzip it, then provide the path to the folder containing index.html."
-Write-Host ""
-$DocsDir = Read-Host "  Path to Godot docs folder"
-if ([string]::IsNullOrWhiteSpace($DocsDir)) {
-  throw "Documentation folder path is required."
-}
-if (-not (Test-Path -LiteralPath $DocsDir -PathType Container)) {
-  throw "Directory does not exist: $DocsDir"
-}
 
-# Resolve the folder that actually contains index.html.
-# The user may have pointed at the parent of the extracted zip folder.
-Write-Host "  Searching for index.html..." -ForegroundColor White
-$IndexInRoot = Join-Path $DocsDir "index.html"
-if (Test-Path -LiteralPath $IndexInRoot -PathType Leaf) {
-  Write-Ok "Found index.html in: $DocsDir"
-} else {
-  $Matches = Get-ChildItem -LiteralPath $DocsDir -Directory |
-    Where-Object { Test-Path (Join-Path $_.FullName "index.html") -PathType Leaf }
-  if ($Matches.Count -eq 1) {
-    $DocsDir = $Matches[0].FullName
+$DocsDir = $null
+while ($true) {
+  Write-Host ""
+  $DocsDir = Read-Host "  Path to Godot docs folder"
+  if ([string]::IsNullOrWhiteSpace($DocsDir)) {
+    throw "Documentation folder path is required."
+  }
+  if (-not (Test-Path -LiteralPath $DocsDir -PathType Container)) {
+    Write-Warn "Directory does not exist: $DocsDir"
+    continue
+  }
+
+  # Resolve the folder that actually contains index.html.
+  # The user may have pointed at the parent of the extracted zip folder.
+  Write-Host "  Searching for index.html..." -ForegroundColor White
+  $IndexInRoot = Join-Path $DocsDir "index.html"
+  if (Test-Path -LiteralPath $IndexInRoot -PathType Leaf) {
+    Write-Ok "Found index.html in: $DocsDir"
+    break
+  }
+
+  $MatchedDirs = @(Get-ChildItem -LiteralPath $DocsDir -Directory |
+    Where-Object { Test-Path (Join-Path $_.FullName "index.html") -PathType Leaf })
+  if ($MatchedDirs.Count -eq 1) {
+    $DocsDir = $MatchedDirs[0].FullName
     Write-Ok "Found index.html in subdirectory: $DocsDir"
-  } elseif ($Matches.Count -gt 1) {
+    break
+  } elseif ($MatchedDirs.Count -gt 1) {
     Write-Host ""
     Write-Host "  Multiple subdirectories contain an index.html. Pick one:" -ForegroundColor Yellow
-    for ($i = 0; $i -lt $Matches.Count; $i++) {
-      Write-Host "    [$($i+1)] $($Matches[$i].FullName)" -ForegroundColor White
+    for ($i = 0; $i -lt $MatchedDirs.Count; $i++) {
+      Write-Host "    [$($i+1)] $($MatchedDirs[$i].FullName)" -ForegroundColor White
     }
     $Choice = Read-Host "  Enter number"
-    $Index = [int]$Choice - 1
-    if ($Index -lt 0 -or $Index -ge $Matches.Count) {
+    $ChoiceIndex = [int]$Choice - 1
+    if ($ChoiceIndex -lt 0 -or $ChoiceIndex -ge $MatchedDirs.Count) {
       throw "Invalid selection."
     }
-    $DocsDir = $Matches[$Index].FullName
+    $DocsDir = $MatchedDirs[$ChoiceIndex].FullName
     Write-Ok "Using: $DocsDir"
+    break
   } else {
-    throw "No index.html found in '$DocsDir' or any of its immediate subdirectories. Please check the path."
+    Write-Warn "Found no index.html in '$DocsDir' or any of its immediate subdirectories."
+    $Retry = Read-Host "  Are you sure the path contains an index.html file? (Y to retry / N to abort)"
+    if ($Retry -notmatch '^[Yy]') {
+      throw "Aborted: no valid documentation folder selected."
+    }
   }
 }
 
