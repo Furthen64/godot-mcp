@@ -118,11 +118,50 @@ if ([string]::IsNullOrWhiteSpace($OpenCodeConfig)) {
 Write-Ok "Using: $OpenCodeConfig"
 
 Write-Header "Godot Executable"
-$GodotPath = Read-Host "  GODOT_PATH override (leave blank to auto-detect)"
-if ([string]::IsNullOrWhiteSpace($GodotPath)) {
+Write-Step "Enter the full path to the Godot executable, or a folder that contains it."
+Write-Step "Accepted names: godot.exe, Godot_v*.exe, *_console.exe, etc."
+$GodotInput = Read-Host "  GODOT_PATH (leave blank to auto-detect)"
+
+if ([string]::IsNullOrWhiteSpace($GodotInput)) {
+  $GodotPath = ""
   Write-Ok "Will auto-detect Godot at runtime."
-} else {
+} elseif (Test-Path -LiteralPath $GodotInput -PathType Leaf) {
+  $GodotPath = $GodotInput
   Write-Ok "Using: $GodotPath"
+} elseif (Test-Path -LiteralPath $GodotInput -PathType Container) {
+  Write-Step "Searching for Godot executables in: $GodotInput"
+  $Candidates = Get-ChildItem -LiteralPath $GodotInput -File |
+    Where-Object { $_.Name -match '^[Gg]odot.*\.exe$' } |
+    Sort-Object Name
+  if ($Candidates.Count -eq 0) {
+    Write-Warn "No Godot executables found in that folder."
+    $GodotPath = Read-Host "  Full path to Godot executable (or blank to auto-detect)"
+    if ([string]::IsNullOrWhiteSpace($GodotPath)) {
+      Write-Ok "Will auto-detect Godot at runtime."
+    } else {
+      Write-Ok "Using: $GodotPath"
+    }
+  } elseif ($Candidates.Count -eq 1) {
+    $GodotPath = $Candidates[0].FullName
+    Write-Ok "Found: $GodotPath"
+  } else {
+    Write-Host ""
+    Write-Host "  Multiple Godot executables found. Pick one:" -ForegroundColor Yellow
+    for ($i = 0; $i -lt $Candidates.Count; $i++) {
+      Write-Host "    [$($i+1)] $($Candidates[$i].Name)" -ForegroundColor White
+    }
+    $Choice = Read-Host "  Enter number"
+    $Index = [int]$Choice - 1
+    if ($Index -lt 0 -or $Index -ge $Candidates.Count) {
+      throw "Invalid selection."
+    }
+    $GodotPath = $Candidates[$Index].FullName
+    Write-Ok "Using: $GodotPath"
+  }
+} else {
+  Write-Warn "Path not found; storing as-is."
+  $GodotPath = $GodotInput
+  Write-Ok "Stored: $GodotPath"
 }
 
 $lines = @(
