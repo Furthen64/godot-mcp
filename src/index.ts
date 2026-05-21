@@ -800,7 +800,21 @@ class GodotServer {
                 description: 'Optional: Specific scene to run',
               },
             },
-            required: ['projectPath'],
+          required: ['projectPath'],
+          },
+        },
+        {
+          name: 'take_screenshot',
+          description: 'Take a screenshot while a Godot project is running',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              outputPath: {
+                type: 'string',
+                description: 'Optional output file path for the screenshot',
+              },
+            },
+            required: [],
           },
         },
         {
@@ -1050,6 +1064,8 @@ class GodotServer {
           return await this.handleWriteProjectFile(request.params.arguments);
         case 'run_project':
           return await this.handleRunProject(request.params.arguments);
+        case 'take_screenshot':
+          return await this.handleTakeScreenshot(request.params.arguments);
         case 'get_debug_output':
           return await this.handleGetDebugOutput();
         case 'stop_project':
@@ -1426,6 +1442,91 @@ class GodotServer {
           'Ensure Godot is installed correctly',
           'Check if the GODOT_PATH environment variable is set correctly',
           'Verify the project path is accessible',
+        ]
+      );
+    }
+  }
+
+  /**
+   * Handle the take_screenshot tool
+   */
+  private async handleTakeScreenshot(args: any) {
+    args = this.normalizeParameters(args);
+    if (!this.activeProcess) {
+      return this.createErrorResponse(
+        'No active Godot process.',
+        [
+          'Use run_project to start a Godot project first',
+          'Check if the Godot process crashed unexpectedly',
+        ]
+      );
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const requestedOutput = args?.outputPath ? String(args.outputPath) : '';
+    const outputPath = requestedOutput || `/tmp/godot-mcp-shot-${timestamp}.png`;
+
+    try {
+      const outputDir = dirname(outputPath);
+      if (!existsSync(outputDir)) {
+        mkdirSync(outputDir, { recursive: true });
+      }
+
+      const platform = process.platform;
+      if (platform === 'linux') {
+        try {
+          await execFileAsync('grim', [outputPath]);
+        } catch {
+          await execFileAsync('gnome-screenshot', ['-f', outputPath]);
+        }
+      } else if (platform === 'darwin') {
+        await execFileAsync('screencapture', ['-x', outputPath]);
+      } else if (platform === 'win32') {
+        const psCommand = [
+          'Add-Type -AssemblyName System.Windows.Forms;',
+          'Add-Type -AssemblyName System.Drawing;',
+          '$bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds;',
+          '$bmp = New-Object System.Drawing.Bitmap($bounds.Width, $bounds.Height);',
+          '$gfx = [System.Drawing.Graphics]::FromImage($bmp);',
+          '$gfx.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size);',
+          `$bmp.Save('${outputPath.replace(/'/g, "''")}');`,
+          '$gfx.Dispose();',
+          '$bmp.Dispose();',
+        ].join(' ');
+        await execFileAsync('powershell', ['-NoProfile', '-Command', psCommand]);
+      } else {
+        return this.createErrorResponse(`Unsupported platform for screenshots: ${platform}`);
+      }
+
+      if (!existsSync(outputPath)) {
+        return this.createErrorResponse(
+          'Screenshot command completed but file was not created',
+          ['Try providing a writable outputPath parameter']
+        );
+      }
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(
+              {
+                message: 'Screenshot captured',
+                path: outputPath,
+              },
+              null,
+              2
+            ),
+          },
+        ],
+      };
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      return this.createErrorResponse(
+        `Failed to capture screenshot: ${errorMessage}`,
+        [
+          'Ensure screenshot tools are installed (grim or gnome-screenshot on Linux)',
+          'Ensure the current desktop/session allows screenshots',
         ]
       );
     }
