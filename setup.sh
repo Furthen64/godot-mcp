@@ -45,7 +45,51 @@ fi
 read -r -p "Path to opencode.json [$DEFAULT_OPENCODE_CONFIG]: " OPENCODE_CONFIG
 OPENCODE_CONFIG="${OPENCODE_CONFIG:-$DEFAULT_OPENCODE_CONFIG}"
 
-read -r -p "Optional GODOT_PATH override (leave blank to auto-detect): " GODOT_PATH
+echo "Godot Executable"
+echo "  Enter the full path to the Godot executable, or a folder that contains it."
+echo "  Accepted names: godot, godot.*, Godot_v*, *_console, etc."
+read -r -p "  GODOT_PATH (leave blank to auto-detect): " GODOT_INPUT
+
+if [[ -z "$GODOT_INPUT" ]]; then
+  GODOT_PATH=""
+  echo "  Will auto-detect Godot at runtime."
+elif [[ -f "$GODOT_INPUT" ]]; then
+  GODOT_PATH="$GODOT_INPUT"
+  echo "  Using: $GODOT_PATH"
+elif [[ -d "$GODOT_INPUT" ]]; then
+  # Strip trailing slash so find works consistently
+  GODOT_INPUT="${GODOT_INPUT%/}"
+  echo "  Searching for Godot executables in: $GODOT_INPUT"
+  mapfile -t CANDIDATES < <(find "$GODOT_INPUT" -maxdepth 1 -type f \( -name 'godot*' -o -name 'Godot*' \) | sort)
+  if [[ ${#CANDIDATES[@]} -eq 0 ]]; then
+    echo "  No Godot executables found in that folder."
+    read -r -p "  Full path to Godot executable (or blank to auto-detect): " GODOT_PATH
+    if [[ -z "$GODOT_PATH" ]]; then
+      echo "  Will auto-detect Godot at runtime."
+    else
+      echo "  Using: $GODOT_PATH"
+    fi
+  elif [[ ${#CANDIDATES[@]} -eq 1 ]]; then
+    GODOT_PATH="${CANDIDATES[0]}"
+    echo "  Found: $GODOT_PATH"
+  else
+    echo "  Multiple Godot executables found. Pick one:"
+    for i in "${!CANDIDATES[@]}"; do
+      echo "    [$((i+1))] $(basename "${CANDIDATES[$i]}")"
+    done
+    read -r -p "  Enter number: " CHOICE
+    IDX=$((CHOICE - 1))
+    if [[ $IDX -lt 0 || $IDX -ge ${#CANDIDATES[@]} ]]; then
+      echo "Invalid selection."
+      exit 1
+    fi
+    GODOT_PATH="${CANDIDATES[$IDX]}"
+    echo "  Using: $GODOT_PATH"
+  fi
+else
+  echo "  Warning: path not found; storing as-is."
+  GODOT_PATH="$GODOT_INPUT"
+fi
 
 cat > "$ENV_FILE" <<EOF
 DOCS_DIR="$DOCS_DIR"
