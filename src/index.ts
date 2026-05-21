@@ -804,6 +804,24 @@ class GodotServer {
           },
         },
         {
+          name: 'run_scene',
+          description: 'Run a specific scene from a Godot project and capture output',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              projectPath: {
+                type: 'string',
+                description: 'Path to the Godot project directory',
+              },
+              scenePath: {
+                type: 'string',
+                description: 'Scene path to run (e.g., res://scenes/Main.tscn)',
+              },
+            },
+            required: ['projectPath', 'scenePath'],
+          },
+        },
+        {
           name: 'take_screenshot',
           description: 'Take a screenshot while a Godot project is running',
           inputSchema: {
@@ -820,6 +838,24 @@ class GodotServer {
         {
           name: 'get_debug_output',
           description: 'Get the current debug output and errors',
+          inputSchema: {
+            type: 'object',
+            properties: {},
+            required: [],
+          },
+        },
+        {
+          name: 'get_output_log',
+          description: 'Get runtime standard output from the active Godot process',
+          inputSchema: {
+            type: 'object',
+            properties: {},
+            required: [],
+          },
+        },
+        {
+          name: 'get_runtime_errors',
+          description: 'Get runtime error output from the active Godot process',
           inputSchema: {
             type: 'object',
             properties: {},
@@ -1064,10 +1100,16 @@ class GodotServer {
           return await this.handleWriteProjectFile(request.params.arguments);
         case 'run_project':
           return await this.handleRunProject(request.params.arguments);
+        case 'run_scene':
+          return await this.handleRunScene(request.params.arguments);
         case 'take_screenshot':
           return await this.handleTakeScreenshot(request.params.arguments);
         case 'get_debug_output':
           return await this.handleGetDebugOutput();
+        case 'get_output_log':
+          return await this.handleGetOutputLog();
+        case 'get_runtime_errors':
+          return await this.handleGetRuntimeErrors();
         case 'stop_project':
           return await this.handleStopProject();
         case 'get_godot_version':
@@ -1447,6 +1489,22 @@ class GodotServer {
     }
   }
 
+  private async handleRunScene(args: any) {
+    args = this.normalizeParameters(args);
+
+    if (!args.projectPath || !args.scenePath) {
+      return this.createErrorResponse(
+        'Project path and scene path are required',
+        ['Provide a valid Godot project path and a scenePath like res://scenes/Main.tscn']
+      );
+    }
+
+    return this.handleRunProject({
+      projectPath: args.projectPath,
+      scene: args.scenePath,
+    });
+  }
+
   /**
    * Handle the take_screenshot tool
    */
@@ -1558,6 +1616,48 @@ class GodotServer {
             null,
             2
           ),
+        },
+      ],
+    };
+  }
+
+  private async handleGetOutputLog() {
+    if (!this.activeProcess) {
+      return this.createErrorResponse(
+        'No active Godot process.',
+        [
+          'Use run_project to start a Godot project first',
+          'Check if the Godot process crashed unexpectedly',
+        ]
+      );
+    }
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({ output: this.activeProcess.output }, null, 2),
+        },
+      ],
+    };
+  }
+
+  private async handleGetRuntimeErrors() {
+    if (!this.activeProcess) {
+      return this.createErrorResponse(
+        'No active Godot process.',
+        [
+          'Use run_project to start a Godot project first',
+          'Check if the Godot process crashed unexpectedly',
+        ]
+      );
+    }
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({ errors: this.activeProcess.errors }, null, 2),
         },
       ],
     };
