@@ -47,14 +47,18 @@ if (!config || typeof config !== "object" || Array.isArray(config)) {
   config = {};
 }
 
-if (!config.mcpServers || typeof config.mcpServers !== "object" || Array.isArray(config.mcpServers)) {
-  config.mcpServers = {};
+if (!config.mcp || typeof config.mcp !== "object" || Array.isArray(config.mcp)) {
+  config.mcp = {};
+}
+
+if (!config.mcp.servers || typeof config.mcp.servers !== "object" || Array.isArray(config.mcp.servers)) {
+  config.mcp.servers = {};
 }
 
 const env = { DEBUG: "true" };
 if (godotPath) env.GODOT_PATH = godotPath;
 
-config.mcpServers[serverName] = {
+config.mcp.servers[serverName] = {
   command: "node",
   args: [path.resolve(buildEntry)],
   env,
