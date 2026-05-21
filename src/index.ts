@@ -9,7 +9,7 @@
 
 import { fileURLToPath } from 'url';
 import { join, dirname, basename, normalize } from 'path';
-import { existsSync, readdirSync, mkdirSync } from 'fs';
+import { existsSync, readdirSync, mkdirSync, readFileSync, writeFileSync, statSync } from 'fs';
 import { spawn, execFile } from 'child_process';
 import { promisify } from 'util';
 
@@ -89,6 +89,9 @@ class GodotServer {
     'directory': 'directory',
     'recursive': 'recursive',
     'scene': 'scene',
+    'content': 'content',
+    'action_name': 'actionName',
+    'events': 'events',
   };
 
   /**
@@ -668,6 +671,107 @@ class GodotServer {
     this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
       tools: [
         {
+          name: 'list_project_files',
+          description: 'List files in a project directory',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              projectPath: {
+                type: 'string',
+                description: 'Path to the Godot project directory',
+              },
+              directory: {
+                type: 'string',
+                description: 'Optional subdirectory in the project (default: project root)',
+              },
+              recursive: {
+                type: 'boolean',
+                description: 'Whether to include nested files (default: false)',
+              },
+            },
+            required: ['projectPath'],
+          },
+        },
+        {
+          name: 'read_project_file',
+          description: 'Read a text file from a project',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              projectPath: {
+                type: 'string',
+                description: 'Path to the Godot project directory',
+              },
+              filePath: {
+                type: 'string',
+                description: 'Path to the file relative to project root',
+              },
+            },
+            required: ['projectPath', 'filePath'],
+          },
+        },
+        {
+          name: 'write_project_file',
+          description: 'Write a text file in a project',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              projectPath: {
+                type: 'string',
+                description: 'Path to the Godot project directory',
+              },
+              filePath: {
+                type: 'string',
+                description: 'Path to the file relative to project root',
+              },
+              content: {
+                type: 'string',
+                description: 'Text content to write',
+              },
+            },
+            required: ['projectPath', 'filePath', 'content'],
+          },
+        },
+        {
+          name: 'get_autoloads',
+          description: 'Get configured autoload singletons from project.godot',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              projectPath: { type: 'string', description: 'Path to the Godot project directory' },
+            },
+            required: ['projectPath'],
+          },
+        },
+        {
+          name: 'get_input_map',
+          description: 'Get input actions configured in project.godot',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              projectPath: { type: 'string', description: 'Path to the Godot project directory' },
+            },
+            required: ['projectPath'],
+          },
+        },
+        {
+          name: 'add_input_action',
+          description: 'Add a new input action in project.godot',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              projectPath: { type: 'string', description: 'Path to the Godot project directory' },
+              actionName: { type: 'string', description: 'Action name to add' },
+              events: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'Optional input event descriptors as strings',
+              },
+            },
+            required: ['projectPath', 'actionName'],
+          },
+        },
+        {
           name: 'launch_editor',
           description: 'Launch Godot editor for a specific project',
           inputSchema: {
@@ -932,6 +1036,18 @@ class GodotServer {
       switch (request.params.name) {
         case 'launch_editor':
           return await this.handleLaunchEditor(request.params.arguments);
+        case 'get_autoloads':
+          return await this.handleGetAutoloads(request.params.arguments);
+        case 'get_input_map':
+          return await this.handleGetInputMap(request.params.arguments);
+        case 'add_input_action':
+          return await this.handleAddInputAction(request.params.arguments);
+        case 'list_project_files':
+          return await this.handleListProjectFiles(request.params.arguments);
+        case 'read_project_file':
+          return await this.handleReadProjectFile(request.params.arguments);
+        case 'write_project_file':
+          return await this.handleWriteProjectFile(request.params.arguments);
         case 'run_project':
           return await this.handleRunProject(request.params.arguments);
         case 'get_debug_output':
@@ -965,6 +1081,170 @@ class GodotServer {
           );
       }
     });
+  }
+
+  private resolveProjectFilePath(projectPath: string, relativePath: string): string | null {
+    const basePath = normalize(projectPath);
+    const targetPath = normalize(join(basePath, relativePath || ''));
+    const baseWithSep = basePath.endsWith('/') ? basePath : `${basePath}/`;
+    if (targetPath !== basePath && !targetPath.startsWith(baseWithSep)) {
+      return null;
+    }
+    return targetPath;
+  }
+
+  private async handleListProjectFiles(args: any) {
+    args = this.normalizeParameters(args);
+    if (!args.projectPath) return this.createErrorResponse('Project path is required');
+    const projectRoot = normalize(args.projectPath);
+    if (!existsSync(projectRoot) || !existsSync(join(projectRoot, 'project.godot'))) {
+      return this.createErrorResponse('Project path is not a valid Godot project');
+    }
+    const scopedDir = this.resolveProjectFilePath(projectRoot, args.directory || '');
+    if (!scopedDir || !existsSync(scopedDir)) {
+      return this.createErrorResponse('Directory is outside project scope or does not exist');
+    }
+
+    const recursive = Boolean(args.recursive);
+    const files: string[] = [];
+    const visit = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        const rel = full.slice(projectRoot.length + 1);
+        if (entry.isDirectory()) {
+          if (recursive) visit(full);
+        } else {
+          files.push(rel);
+        }
+      }
+    };
+    visit(scopedDir);
+
+    return { content: [{ type: 'text', text: JSON.stringify({ files }, null, 2) }] };
+  }
+
+  private async handleReadProjectFile(args: any) {
+    args = this.normalizeParameters(args);
+    if (!args.projectPath || !args.filePath) {
+      return this.createErrorResponse('Project path and file path are required');
+    }
+    const resolvedPath = this.resolveProjectFilePath(args.projectPath, args.filePath);
+    if (!resolvedPath || !existsSync(resolvedPath)) {
+      return this.createErrorResponse('File is outside project scope or does not exist');
+    }
+    const fileContents = readFileSync(resolvedPath, 'utf-8');
+    return { content: [{ type: 'text', text: fileContents }] };
+  }
+
+  private async handleWriteProjectFile(args: any) {
+    args = this.normalizeParameters(args);
+    if (!args.projectPath || !args.filePath || args.content === undefined) {
+      return this.createErrorResponse('Project path, file path, and content are required');
+    }
+    const resolvedPath = this.resolveProjectFilePath(args.projectPath, args.filePath);
+    if (!resolvedPath) {
+      return this.createErrorResponse('File path is outside project scope');
+    }
+    const parentDir = dirname(resolvedPath);
+    if (!existsSync(parentDir) || !statSync(parentDir).isDirectory()) {
+      return this.createErrorResponse('Parent directory does not exist');
+    }
+    writeFileSync(resolvedPath, args.content, 'utf-8');
+    return { content: [{ type: 'text', text: `Wrote file: ${args.filePath}` }] };
+  }
+
+  private readProjectGodot(projectPath: string): { path: string; content: string } | null {
+    const projectFilePath = join(normalize(projectPath), 'project.godot');
+    if (!existsSync(projectFilePath)) return null;
+    return { path: projectFilePath, content: readFileSync(projectFilePath, 'utf-8') };
+  }
+
+  private async handleGetAutoloads(args: any) {
+    args = this.normalizeParameters(args);
+    if (!args.projectPath) return this.createErrorResponse('Project path is required');
+    const project = this.readProjectGodot(args.projectPath);
+    if (!project) return this.createErrorResponse('Project path is not a valid Godot project');
+    const lines = project.content.split('\n');
+    const autoloads: Array<{ name: string; value: string; path: string; enabled: boolean }> = [];
+    let inAutoload = false;
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (line.startsWith('[')) {
+        inAutoload = line === '[autoload]';
+        continue;
+      }
+      if (!inAutoload || !line || line.startsWith(';')) continue;
+      const match = line.match(/^([^=]+)\s*=\s*"([^"]*)"/);
+      if (!match) continue;
+      const name = match[1].trim();
+      const value = match[2];
+      autoloads.push({ name, value, path: value.replace(/^\*/, ''), enabled: !value.startsWith('*') });
+    }
+    return { content: [{ type: 'text', text: JSON.stringify({ autoloads }, null, 2) }] };
+  }
+
+  private async handleGetInputMap(args: any) {
+    args = this.normalizeParameters(args);
+    if (!args.projectPath) return this.createErrorResponse('Project path is required');
+    const project = this.readProjectGodot(args.projectPath);
+    if (!project) return this.createErrorResponse('Project path is not a valid Godot project');
+    const lines = project.content.split('\n');
+    const inputMap: Record<string, string> = {};
+    let inInput = false;
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (line.startsWith('[')) {
+        inInput = line === '[input]';
+        continue;
+      }
+      if (!inInput || !line || line.startsWith(';')) continue;
+      const match = line.match(/^([^=]+)\s*=\s*(.+)$/);
+      if (!match) continue;
+      inputMap[match[1].trim()] = match[2].trim();
+    }
+    return { content: [{ type: 'text', text: JSON.stringify({ inputMap }, null, 2) }] };
+  }
+
+  private async handleAddInputAction(args: any) {
+    args = this.normalizeParameters(args);
+    if (!args.projectPath || !args.actionName) {
+      return this.createErrorResponse('Project path and action name are required');
+    }
+    const project = this.readProjectGodot(args.projectPath);
+    if (!project) return this.createErrorResponse('Project path is not a valid Godot project');
+    if (!/^[A-Za-z0-9_\/-]+$/.test(args.actionName)) {
+      return this.createErrorResponse('Action name contains invalid characters');
+    }
+    const eventsArray = Array.isArray(args.events) ? args.events.filter((e: any) => typeof e === 'string') : [];
+    const actionValue = `{ "deadzone": 0.5, "events": [${eventsArray.map((e: string) => `"${e.replace(/"/g, '\\"')}"`).join(', ')}] }`;
+    const lines = project.content.split('\n');
+    let inputStart = -1;
+    let inputEnd = lines.length;
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = lines[i].trim();
+      if (trimmed === '[input]') {
+        inputStart = i;
+        for (let j = i + 1; j < lines.length; j++) {
+          if (lines[j].trim().startsWith('[')) {
+            inputEnd = j;
+            break;
+          }
+        }
+        break;
+      }
+    }
+    if (inputStart === -1) {
+      lines.push('', '[input]', `${args.actionName}=${actionValue}`);
+    } else {
+      for (let i = inputStart + 1; i < inputEnd; i++) {
+        if (lines[i].trim().startsWith(`${args.actionName}=`)) {
+          return this.createErrorResponse(`Input action already exists: ${args.actionName}`);
+        }
+      }
+      lines.splice(inputEnd, 0, `${args.actionName}=${actionValue}`);
+    }
+    writeFileSync(project.path, lines.join('\n'), 'utf-8');
+    return { content: [{ type: 'text', text: `Added input action: ${args.actionName}` }] };
   }
 
   /**
