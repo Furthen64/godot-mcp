@@ -7,6 +7,55 @@ $DefaultOpenCodeConfig = Join-Path $HOME ".config/opencode/opencode.json"
 $ServerName = "godot"
 $BuildEntry = Join-Path $ScriptDir "build/index.js"
 
+function ConvertTo-Hashtable {
+  param([Parameter(Mandatory = $true)] $Value)
+
+  if ($null -eq $Value) { return $null }
+
+  if ($Value -is [System.Collections.IDictionary]) {
+    $result = @{}
+    foreach ($key in $Value.Keys) {
+      $result[$key] = ConvertTo-Hashtable -Value $Value[$key]
+    }
+    return $result
+  }
+
+  if ($Value -is [System.Management.Automation.PSCustomObject]) {
+    $result = @{}
+    foreach ($property in $Value.PSObject.Properties) {
+      $result[$property.Name] = ConvertTo-Hashtable -Value $property.Value
+    }
+    return $result
+  }
+
+  if (($Value -is [System.Collections.IEnumerable]) -and -not ($Value -is [string])) {
+    $result = @()
+    foreach ($item in $Value) {
+      $result += ,(ConvertTo-Hashtable -Value $item)
+    }
+    return $result
+  }
+
+  return $Value
+}
+
+function Parse-JsonObject {
+  param([Parameter(Mandatory = $true)][string]$Json)
+
+  $convertFromJson = Get-Command ConvertFrom-Json
+  $supportsDepth = $convertFromJson.Parameters.ContainsKey("Depth")
+  $supportsAsHashtable = $convertFromJson.Parameters.ContainsKey("AsHashtable")
+
+  if ($supportsDepth -and $supportsAsHashtable) {
+    return ($Json | ConvertFrom-Json -Depth 100 -AsHashtable)
+  }
+  if ($supportsDepth) {
+    return ConvertTo-Hashtable -Value ($Json | ConvertFrom-Json -Depth 100)
+  }
+
+  return ConvertTo-Hashtable -Value ($Json | ConvertFrom-Json)
+}
+
 if (Test-Path -LiteralPath $EnvFile) {
   Get-Content -LiteralPath $EnvFile | ForEach-Object {
     if ($_ -match '^\s*([A-Z0-9_]+)\s*=\s*"(.*)"\s*$') {
@@ -48,7 +97,7 @@ $config = @{}
 if (Test-Path -LiteralPath $OpenCodeConfig -PathType Leaf) {
   $raw = (Get-Content -LiteralPath $OpenCodeConfig -Raw).Trim()
   if ($raw) {
-    $parsed = $raw | ConvertFrom-Json -Depth 100 -AsHashtable
+    $parsed = Parse-JsonObject -Json $raw
     if ($parsed -is [hashtable]) { $config = $parsed }
   }
 }
