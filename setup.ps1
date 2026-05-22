@@ -166,6 +166,7 @@ if ([string]::IsNullOrWhiteSpace($GodotInput)) {
 
 $lines = @(
   "DOCS_DIR=""$DocsDir""",
+  "GODOT_DOCS_PATH=""$DocsDir""",
   "OPENCODE_CONFIG=""$OpenCodeConfig""",
   "GODOT_PATH=""$GodotPath"""
 )
