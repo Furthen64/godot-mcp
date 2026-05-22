@@ -1,6 +1,10 @@
 # Dependencies
 node_modules/
 
+# locks
+package-lock.json
+
+
 # Build output
 build/
 dist/
