@@ -93,6 +93,12 @@ if (-not [string]::IsNullOrWhiteSpace($OpenCodeDir)) {
   New-Item -ItemType Directory -Path $OpenCodeDir -Force | Out-Null
 }
 
+$configBackupDate = Get-Date -Format "yyMMdd"
+$configBackupPath = "${OpenCodeConfig}_bak${configBackupDate}"
+if (Test-Path -LiteralPath $OpenCodeConfig -PathType Leaf) {
+  Copy-Item -LiteralPath $OpenCodeConfig -Destination $configBackupPath -Force
+}
+
 $config = @{}
 if (Test-Path -LiteralPath $OpenCodeConfig -PathType Leaf) {
   $rawContent = Get-Content -LiteralPath $OpenCodeConfig -Raw
@@ -101,14 +107,6 @@ if (Test-Path -LiteralPath $OpenCodeConfig -PathType Leaf) {
     $parsed = Parse-JsonObject -Json $raw
     if ($parsed -is [hashtable]) { $config = $parsed }
   }
-}
-
-if (-not $config.ContainsKey("mcp") -or -not ($config["mcp"] -is [hashtable])) {
-  $config["mcp"] = @{}
-}
-
-if (-not $config["mcp"].ContainsKey("servers") -or -not ($config["mcp"]["servers"] -is [hashtable])) {
-  $config["mcp"]["servers"] = @{}
 }
 
 $environmentMap = @{ DEBUG = "true" }
@@ -127,13 +125,14 @@ if (Get-Variable -Name GODOT_DOCS_PATH -Scope Script -ErrorAction SilentlyContin
   }
 }
 
-$config["mcp"]["servers"][$ServerName] = @{
+$resolvedBuildEntry = (Resolve-Path -LiteralPath $BuildEntry).Path
+$config["mcp"] = @{
+  $ServerName = @{
   type = "local"
-  command = "node"
-  args = @(
-    (Resolve-Path -LiteralPath $BuildEntry).Path
-  )
+  enabled = $true
+  command = @("node", $resolvedBuildEntry)
   env = $environmentMap
+  }
 }
 
 $json = $config | ConvertTo-Json -Depth 100
