@@ -117,6 +117,15 @@ if (Get-Variable -Name GODOT_PATH -Scope Script -ErrorAction SilentlyContinue) {
     $environmentMap["GODOT_PATH"] = $script:GODOT_PATH
   }
 }
+if (Get-Variable -Name GODOT_DOCS_PATH -Scope Script -ErrorAction SilentlyContinue) {
+  if (-not [string]::IsNullOrWhiteSpace($script:GODOT_DOCS_PATH)) {
+    $environmentMap["GODOT_DOCS_PATH"] = $script:GODOT_DOCS_PATH
+  }
+} elseif (Get-Variable -Name DOCS_DIR -Scope Script -ErrorAction SilentlyContinue) {
+  if (-not [string]::IsNullOrWhiteSpace($script:DOCS_DIR)) {
+    $environmentMap["GODOT_DOCS_PATH"] = $script:DOCS_DIR
+  }
+}
 
 $config["mcp"]["servers"][$ServerName] = @{
   type = "local"

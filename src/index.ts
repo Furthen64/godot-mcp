@@ -9,7 +9,7 @@
 
 import { fileURLToPath } from 'url';
 import { join, dirname, basename, normalize, resolve, sep } from 'path';
-import { existsSync, readdirSync, mkdirSync, readFileSync, writeFileSync, statSync } from 'fs';
+import { existsSync, readdirSync, mkdirSync, readFileSync, writeFileSync, statSync, Dirent } from 'fs';
 import { spawn, execFile } from 'child_process';
 import { promisify } from 'util';
 
@@ -137,7 +137,7 @@ class GodotServer {
 
     // Set the path to the operations script
     this.operationsScriptPath = join(__dirname, 'scripts', 'godot_operations.gd');
-    this.docsPath = resolve(process.env.GODOT_DOCS_PATH || join(process.cwd(), 'take_from_this'));
+    this.docsPath = resolve(process.env.GODOT_DOCS_PATH || process.env.DOCS_DIR || join(process.cwd(), 'take_from_this'));
     if (debugMode) console.error(`[DEBUG] Operations script path: ${this.operationsScriptPath}`);
     if (debugMode) console.error(`[DEBUG] Documentation path: ${this.docsPath}`);
 
@@ -1191,22 +1191,68 @@ class GodotServer {
     return targetPath;
   }
 
+  private buildDocumentationTreeFromDirectory(rootPath: string): string {
+    const lines: string[] = ['.'];
+    const maxEntries = 2000;
+
+    const walk = (currentPath: string, prefix: string) => {
+      if (lines.length >= maxEntries) return;
+      let entries: Dirent[] = [];
+      try {
+        entries = readdirSync(currentPath, { withFileTypes: true });
+      } catch (error) {
+        this.logDebug(`Failed to read documentation directory '${currentPath}': ${error}`);
+        return;
+      }
+
+      const filtered = entries
+        .filter((entry) => !entry.name.startsWith('.'))
+        .filter((entry) => entry.isDirectory() || entry.name.toLowerCase().endsWith('.html'))
+        .sort((a, b) => {
+          if (a.isDirectory() && !b.isDirectory()) return -1;
+          if (!a.isDirectory() && b.isDirectory()) return 1;
+          return a.name.localeCompare(b.name);
+        });
+
+      filtered.forEach((entry, index) => {
+        if (lines.length >= maxEntries) return;
+        const isLast = index === filtered.length - 1;
+        const connector = isLast ? '└── ' : '├── ';
+        const nextPrefix = `${prefix}${isLast ? '    ' : '│   '}`;
+
+        if (entry.isDirectory()) {
+          lines.push(`${prefix}${connector}${entry.name}/`);
+          walk(join(currentPath, entry.name), nextPrefix);
+        } else {
+          lines.push(`${prefix}${connector}${entry.name}`);
+        }
+      });
+    };
+
+    walk(rootPath, '');
+
+    if (lines.length >= maxEntries) {
+      lines.push('... (truncated)');
+    }
+
+    return lines.join('\n');
+  }
+
   private async handleGetDocumentationTree() {
     if (!existsSync(this.docsPath)) {
       return this.createErrorResponse('Documentation directory not found', [
         'Ensure take_from_this exists in the repository root',
-        'Or set GODOT_DOCS_PATH to a documentation directory',
+        'Or set GODOT_DOCS_PATH (or DOCS_DIR) to a documentation directory',
       ]);
     }
 
     const treePath = this.resolveDocumentationFilePath('docs_tree.txt');
-    if (!treePath || !existsSync(treePath)) {
-      return this.createErrorResponse('Documentation tree file not found', [
-        'Add docs_tree.txt in the configured docs directory',
-      ]);
+    if (treePath && existsSync(treePath)) {
+      const treeContent = readFileSync(treePath, 'utf8');
+      return { content: [{ type: 'text', text: treeContent }] };
     }
 
-    const treeContent = readFileSync(treePath, 'utf8');
+    const treeContent = this.buildDocumentationTreeFromDirectory(this.docsPath);
     return { content: [{ type: 'text', text: treeContent }] };
   }
 
@@ -1217,7 +1263,7 @@ class GodotServer {
     if (!existsSync(this.docsPath)) {
       return this.createErrorResponse('Documentation directory not found', [
         'Ensure take_from_this exists in the repository root',
-        'Or set GODOT_DOCS_PATH to a documentation directory',
+        'Or set GODOT_DOCS_PATH (or DOCS_DIR) to a documentation directory',
       ]);
     }
 

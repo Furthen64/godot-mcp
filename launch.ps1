@@ -28,6 +28,13 @@ if (Get-Variable -Name GODOT_PATH -Scope Script -ErrorAction SilentlyContinue) {
     $env:GODOT_PATH = $script:GODOT_PATH
   }
 }
+if (-not $env:GODOT_DOCS_PATH) {
+  if (Get-Variable -Name DOCS_DIR -Scope Script -ErrorAction SilentlyContinue) {
+    if (-not [string]::IsNullOrWhiteSpace($script:DOCS_DIR)) {
+      $env:GODOT_DOCS_PATH = $script:DOCS_DIR
+    }
+  }
+}
 
 Write-Host "Launching Godot MCP server..."
 & node $BuildEntry

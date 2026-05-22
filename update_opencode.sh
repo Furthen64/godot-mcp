@@ -13,6 +13,7 @@ fi
 
 OPENCODE_CONFIG="${1:-${OPENCODE_CONFIG:-$DEFAULT_OPENCODE_CONFIG}}"
 BUILD_ENTRY="$SCRIPT_DIR/build/index.js"
+DOCS_PATH="${GODOT_DOCS_PATH:-${DOCS_DIR:-}}"
 
 command -v node >/dev/null 2>&1 || { echo "node is required"; exit 1; }
 command -v npm >/dev/null 2>&1 || { echo "npm is required"; exit 1; }
@@ -29,11 +30,11 @@ fi
 
 mkdir -p "$(dirname "$OPENCODE_CONFIG")"
 
-node - "$OPENCODE_CONFIG" "$BUILD_ENTRY" "$SERVER_NAME" "${GODOT_PATH:-}" <<'NODE'
+node - "$OPENCODE_CONFIG" "$BUILD_ENTRY" "$SERVER_NAME" "${GODOT_PATH:-}" "$DOCS_PATH" <<'NODE'
 const fs = require("fs");
 const path = require("path");
 
-const [configPath, buildEntry, serverName, godotPath] = process.argv.slice(2);
+const [configPath, buildEntry, serverName, godotPath, docsPath] = process.argv.slice(2);
 let config = {};
 
 if (fs.existsSync(configPath)) {
@@ -57,6 +58,7 @@ if (!config.mcp.servers || typeof config.mcp.servers !== "object" || Array.isArr
 
 const env = { DEBUG: "true" };
 if (godotPath) env.GODOT_PATH = godotPath;
+if (docsPath) env.GODOT_DOCS_PATH = docsPath;
 
 config.mcp.servers[serverName] = {
   type: "local",

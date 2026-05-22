@@ -22,6 +22,12 @@ export DEBUG="${DEBUG:-true}"
 if [[ -n "${GODOT_PATH:-}" ]]; then
   export GODOT_PATH
 fi
+if [[ -z "${GODOT_DOCS_PATH:-}" && -n "${DOCS_DIR:-}" ]]; then
+  GODOT_DOCS_PATH="$DOCS_DIR"
+fi
+if [[ -n "${GODOT_DOCS_PATH:-}" ]]; then
+  export GODOT_DOCS_PATH
+fi
 
 echo "Launching Godot MCP server..."
 exec node "$BUILD_ENTRY"
