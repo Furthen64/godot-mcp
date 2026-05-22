@@ -31,7 +31,10 @@ if ! command -v godot >/dev/null 2>&1; then
   echo
 fi
 
-read -r -p "Path to your Godot documentation/project folder: " DOCS_DIR
+echo "Godot Offline Documentation"
+echo "  Download godot-docs-html-stable.zip from: https://docs.godotengine.org/en/stable/"
+echo "  Unzip it, then provide the path to the folder containing index.html."
+read -r -p "Path to Godot docs folder: " DOCS_DIR
 if [[ -z "$DOCS_DIR" ]]; then
   echo "Documentation/project folder path is required."
   exit 1
@@ -93,6 +96,7 @@ fi
 
 cat > "$ENV_FILE" <<EOF
 DOCS_DIR="$DOCS_DIR"
+GODOT_DOCS_PATH="$DOCS_DIR"
 OPENCODE_CONFIG="$OPENCODE_CONFIG"
 GODOT_PATH="$GODOT_PATH"
 EOF
