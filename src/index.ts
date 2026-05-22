@@ -8,7 +8,7 @@
  */
 
 import { fileURLToPath } from 'url';
-import { join, dirname, basename, normalize } from 'path';
+import { join, dirname, basename, normalize, resolve, sep } from 'path';
 import { existsSync, readdirSync, mkdirSync, readFileSync, writeFileSync, statSync } from 'fs';
 import { spawn, execFile } from 'child_process';
 import { promisify } from 'util';
@@ -66,6 +66,7 @@ class GodotServer {
   private activeProcess: GodotProcess | null = null;
   private godotPath: string | null = null;
   private operationsScriptPath: string;
+  private docsPath: string;
   private validatedPaths: Map<string, boolean> = new Map();
   private strictPathValidation: boolean = false;
 
@@ -136,7 +137,9 @@ class GodotServer {
 
     // Set the path to the operations script
     this.operationsScriptPath = join(__dirname, 'scripts', 'godot_operations.gd');
+    this.docsPath = resolve(process.env.GODOT_DOCS_PATH || join(process.cwd(), 'take_from_this'));
     if (debugMode) console.error(`[DEBUG] Operations script path: ${this.operationsScriptPath}`);
+    if (debugMode) console.error(`[DEBUG] Documentation path: ${this.docsPath}`);
 
     // Initialize the MCP server
     this.server = new Server(
@@ -671,6 +674,29 @@ class GodotServer {
     this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
       tools: [
         {
+          name: 'get_documentation_tree',
+          description: 'Get a tree overview of bundled Godot documentation files',
+          inputSchema: {
+            type: 'object',
+            properties: {},
+            required: [],
+          },
+        },
+        {
+          name: 'get_documentation_file',
+          description: 'Read a specific bundled Godot documentation file',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              filePath: {
+                type: 'string',
+                description: 'Path to the documentation file relative to docs root',
+              },
+            },
+            required: ['filePath'],
+          },
+        },
+        {
           name: 'list_project_files',
           description: 'List files in a project directory',
           inputSchema: {
@@ -1092,6 +1118,10 @@ class GodotServer {
           return await this.handleGetInputMap(request.params.arguments);
         case 'add_input_action':
           return await this.handleAddInputAction(request.params.arguments);
+        case 'get_documentation_tree':
+          return await this.handleGetDocumentationTree();
+        case 'get_documentation_file':
+          return await this.handleGetDocumentationFile(request.params.arguments);
         case 'list_project_files':
           return await this.handleListProjectFiles(request.params.arguments);
         case 'read_project_file':
@@ -1149,6 +1179,55 @@ class GodotServer {
       return null;
     }
     return targetPath;
+  }
+
+  private resolveDocumentationFilePath(relativePath: string): string | null {
+    const basePath = this.docsPath;
+    const targetPath = resolve(basePath, relativePath || '');
+    const baseWithSep = basePath.endsWith(sep) ? basePath : `${basePath}${sep}`;
+    if (targetPath !== basePath && !targetPath.startsWith(baseWithSep)) {
+      return null;
+    }
+    return targetPath;
+  }
+
+  private async handleGetDocumentationTree() {
+    if (!existsSync(this.docsPath)) {
+      return this.createErrorResponse('Documentation directory not found', [
+        'Ensure take_from_this exists in the repository root',
+        'Or set GODOT_DOCS_PATH to a documentation directory',
+      ]);
+    }
+
+    const treePath = this.resolveDocumentationFilePath('docs_tree.txt');
+    if (!treePath || !existsSync(treePath)) {
+      return this.createErrorResponse('Documentation tree file not found', [
+        'Add docs_tree.txt in the configured docs directory',
+      ]);
+    }
+
+    const treeContent = readFileSync(treePath, 'utf8');
+    return { content: [{ type: 'text', text: treeContent }] };
+  }
+
+  private async handleGetDocumentationFile(args: any) {
+    args = this.normalizeParameters(args);
+    if (!args.filePath) return this.createErrorResponse('File path is required');
+
+    if (!existsSync(this.docsPath)) {
+      return this.createErrorResponse('Documentation directory not found', [
+        'Ensure take_from_this exists in the repository root',
+        'Or set GODOT_DOCS_PATH to a documentation directory',
+      ]);
+    }
+
+    const targetPath = this.resolveDocumentationFilePath(args.filePath);
+    if (!targetPath) return this.createErrorResponse('Invalid documentation file path');
+    if (!existsSync(targetPath)) return this.createErrorResponse(`Documentation file not found: ${args.filePath}`);
+    if (statSync(targetPath).isDirectory()) return this.createErrorResponse('Requested path is a directory, not a file');
+
+    const fileContent = readFileSync(targetPath, 'utf8');
+    return { content: [{ type: 'text', text: fileContent }] };
   }
 
   private async handleListProjectFiles(args: any) {
