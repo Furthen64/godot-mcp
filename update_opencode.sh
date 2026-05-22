@@ -59,6 +59,7 @@ const env = { DEBUG: "true" };
 if (godotPath) env.GODOT_PATH = godotPath;
 
 config.mcp.servers[serverName] = {
+  type: "local",
   command: "node",
   args: [path.resolve(buildEntry)],
   env,

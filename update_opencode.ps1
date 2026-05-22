@@ -106,6 +106,10 @@ if (-not $config.ContainsKey("mcp") -or -not ($config["mcp"] -is [hashtable])) {
   $config["mcp"] = @{}
 }
 
+if (-not $config["mcp"].ContainsKey("servers") -or -not ($config["mcp"]["servers"] -is [hashtable])) {
+  $config["mcp"]["servers"] = @{}
+}
+
 $environmentMap = @{ DEBUG = "true" }
 if (Get-Variable -Name GODOT_PATH -Scope Script -ErrorAction SilentlyContinue) {
   if (-not [string]::IsNullOrWhiteSpace($script:GODOT_PATH)) {
@@ -113,14 +117,13 @@ if (Get-Variable -Name GODOT_PATH -Scope Script -ErrorAction SilentlyContinue) {
   }
 }
 
-$config["mcp"][$ServerName] = @{
+$config["mcp"]["servers"][$ServerName] = @{
   type = "local"
-  enabled = $true
-  command = @(
-    "node"
+  command = "node"
+  args = @(
     (Resolve-Path -LiteralPath $BuildEntry).Path
   )
-  environment = $environmentMap
+  env = $environmentMap
 }
 
 $json = $config | ConvertTo-Json -Depth 100
