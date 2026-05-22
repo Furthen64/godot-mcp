@@ -95,7 +95,8 @@ if (-not [string]::IsNullOrWhiteSpace($OpenCodeDir)) {
 
 $config = @{}
 if (Test-Path -LiteralPath $OpenCodeConfig -PathType Leaf) {
-  $raw = (Get-Content -LiteralPath $OpenCodeConfig -Raw).Trim()
+  $rawContent = Get-Content -LiteralPath $OpenCodeConfig -Raw
+  $raw = if ($null -eq $rawContent) { "" } else { $rawContent.Trim() }
   if ($raw) {
     $parsed = Parse-JsonObject -Json $raw
     if ($parsed -is [hashtable]) { $config = $parsed }
